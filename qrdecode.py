@@ -881,58 +881,207 @@ def codewords_to_bitstream(codewords):
     return bits.flatten()
 
 
-def extract_bitstream(matrix):
-    """Extract the bitstream from the specified QR matrix.
+def get_bits_from_stream(bitstream, position, num_bits):
+    """Read bits from the bitstream.
 
     Parameters:
-        matrix (ndarray): QR code matrix (0 = white, 1 = black).
+        bitstream (ndarray):    Array of 8-bit data codewords.
+        position (int):         Index of first bit to read.
+        num_bits (int):         Number of bits to read.
 
     Returns:
-        Array of bits (after error correction).
+        Integer representing the obtained bits (most-significant bit first).
 
     Raises:
-        QRDecodeError: If decoding fails.
+        QRDecodeError: If the requested range exceeds the bitstream length.
     """
 
-    (nrow, ncol) = matrix.shape
-    qr_version = (nrow - 17) // 4
-    assert nrow == ncol
-    assert nrow == 17 + 4 * qr_version
+    if position + num_bits > 8 * len(bitstream):
+        raise QRDecodeError("Unexpected end of bitstream")
 
-    # Extract format information.
-    (error_correction_level, mask_pattern) = extract_format_data(matrix)
+    word_pos = position // 8
+    bit_pos = position % 8
 
-    print(qr_version, error_correction_level, mask_pattern)
+    k = min(num_bits, 8 - bit_pos)
+    mask = (1 << k) - 1
+    value = (int(bitstream[word_pos]) >> (8 - bit_pos - k)) & mask
 
-    # Extract codewords from the QR matrix.
-    codewords = extract_codewords(matrix, mask_pattern)
+    bits_remaining = num_bits - k
 
-    print(codewords)
+    while bits_remaining >= 8:
+        word_pos += 1
+        word = int(bitstream[word_pos])
+        value = (value << 8) | word
+        bits_remaining -= 8
 
-    # Unpack codeword sequence and perform error correction.
-    data_codewords = codeword_error_correction(codewords,
-                                               qr_version,
-                                               error_correction_level)
+    if bits_remaining > 0:
+        word_pos += 1
+        mask = (1 << bits_remaining) - 1
+        lsb = 8 - bits_remaining
+        word = (int(bitstream[word_pos]) >> (8 - bits_remaining)) & mask
+        value = (value << bits_remaining) | word
 
-    # Create bit stream.
-    bitstream = codewords_to_bitstream(data_codewords)
-    return bitstream
+    return value
+
+
+def decode_numeric_segment(bitstream, position, nchar):
+    """Decode a segment in numeric mode.
+
+    Parameters:
+        bitstream (ndarray):    Array of 8-bit data codewords.
+        position (int):         Bit position within the bitstream.
+        nchar (int):            Number of characters to decode.
+
+    Returns:
+        Tuple (decoded_data, new_position).
+
+    Raises:
+        QRDecodeError: If decoding fails or end of bitstream is reached.
+    """
+    frag = bytearray(nchar)
+    ndone = 0
+    while ndone < nchar:
+        k = min(nchar - ndone, 3)
+        nbits = 3 * k + 1
+        value = get_bits_from_stream(bitstream, position, nbits)
+        position += nbits
+        if k > 2:
+            frag[ndone+2] = 0x30 + value % 10
+            value = value // 10
+        if k > 1:
+            frag[ndone+1] = 0x30 + value % 10
+            value = value // 10
+        if value > 9:
+            raise QRDecodeError("Invalid numeric data")
+        frag[ndone] = 0x30 + value
+        ndone += k
+    return (frag, position)
+
+
+def decode_alphanumeric_segment(bitstream, position, nchar):
+    """Decode a segment in alphanumeric mode.
+
+    Parameters:
+        bitstream (ndarray):    Array of 8-bit data codewords.
+        position (int):         Bit position within the bitstream.
+        nchar (int):            Number of characters to decode.
+
+    Returns:
+        Tuple (decoded_data, new_position).
+
+    Raises:
+        QRDecodeError: If decoding fails or end of bitstream is reached.
+    """
+    alphanum_table = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
+    assert len(alphanum_table) == 45
+    frag = bytearray(nchar)
+    ndone = 0
+    while ndone < nchar:
+        k = min(nchar - ndone, 2)
+        nbits = 5 * k + 1
+        value = get_bits_from_stream(bitstream, position, nbits)
+        position += nbits
+        if k > 1:
+            frag[ndone+1] = alphanum_table[value % 45]
+            value = value // 45
+        if value > 44:
+            raise QRDecodeError("Invalid alphanumeric data")
+        frag[ndone] = alphanum_table[value]
+        ndone += k
+    return (frag, position)
+
+
+def decode_8bit_segment(bitstream, position, nchar):
+    """Decode a segment in 8-bit mode.
+
+    Parameters:
+        bitstream (ndarray):    Array of 8-bit data codewords.
+        position (int):         Bit position within the bitstream.
+        nchar (int):            Number of characters to decode.
+
+    Returns:
+        Tuple (decoded_data, new_position).
+
+    Raises:
+        QRDecodeError: If decoding fails or end of bitstream is reached.
+    """
+    frag = bytearray(nchar)
+    for i in range(nchar):
+        frag[i] = get_bits_from_stream(bitstream, position, 8)
+        position += 8
+    return (frag, position)
 
 
 def decode_bitstream(bitstream, qr_version):
     """Decode the specified QR bitstream.
 
     Parameters:
-        bitstream (ndarray):    Array of bits (after error correction).
+        bitstream (ndarray):    Array of 8-bit data codewords.
         qr_version (int):       QR code version.
 
     Returns:
-        Decoded data as a string.
+        Decoded data as a bytestring.
 
     Raises:
         QRDecodeError: If decoding fails.
     """
-    # TODO
+
+    # Determine number of bits in character count field.
+    if qr_version <= 9:
+        character_count_bits = [0, 10, 9, 0, 8]
+    elif qr_version <= 26:
+        character_count_bits = [0, 12, 11, 0, 16]
+    else:
+        character_count_bits = [0, 14, 13, 0, 16]
+
+    decoded_data = bytearray()
+    position = 0
+
+    # Decode segments until end of bitstream (or terminator).
+    while position + 4 <= 8 * len(bitstream):
+
+        # Read mode indicator.
+        mode = get_bits_from_stream(bitstream, position, 4)
+        position += 4
+
+        # Stop at terminator marker.
+        if mode == 0:
+            break
+
+        # Reject unsupported modes.
+        if mode not in (1, 2, 4):
+            if mode == 7:
+                raise QRDecodeError("ECI mode not supported")
+            if mode == 3:
+                raise QRDecodeError("Structured Append mode not supported")
+            if mode in (5, 9):
+                raise QRDecodeError("FNC1 mode not supported")
+            if mode == 8:
+                raise QRDecodeError("Kanji mode not supported")
+            raise QRDecodeError("Unsupported mode indicator 0x{:x}"
+                                .format(mode))
+
+        # Read character count.
+        nbits = character_count_bits[mode]
+        nchar = get_bits_from_stream(bitstream, position, nbits)
+        if nchar < 0:
+            raise QRDecodeError("Unexpected end of bitstream")
+        position += nbits
+
+        # Decode characters.
+        if mode == 1:
+            (frag, position
+                ) = decode_numeric_segment(bitstream, position, nchar)
+        elif mode == 2:
+            (frag, position
+                ) = decode_alphanumeric_segment(bitstream, position, nchar)
+        elif mode == 4:
+            (frag, position
+                ) = decode_8bit_segment(bitstream, position, nchar)
+
+        decoded_data += frag
+
+    return bytes(decoded_data)
 
 
 def print_matrix(matrix):
@@ -949,6 +1098,15 @@ def print_matrix(matrix):
             else:
                 s.append("?")
         print(" ", " ".join(s))
+
+
+def print_bitstream(bitstream):
+    """Show the bitstream on screen."""
+    bits = []
+    for word in bitstream:
+        for k in range(8):
+            bits.append((word >> (7 - k)) & 1)
+    print("".join(map(str, bits)))
 
 
 def decode_qrcode(image):
@@ -998,10 +1156,23 @@ def decode_qrcode(image):
 
             print_matrix(matrix)
 
-            # Extract the error-corrected bitstream from the matrix.
-            bitstream = extract_bitstream(matrix)
+            # Extract format information.
+            (error_correction_level, mask_pattern
+                ) = extract_format_data(matrix)
 
-            print(bitstream)
+            print(qr_version, error_correction_level, mask_pattern)
+
+            # Extract codewords from the QR matrix.
+            codewords = extract_codewords(matrix, mask_pattern)
+
+            print(codewords)
+
+            # Unpack codeword sequence and perform error correction.
+            bitstream = codeword_error_correction(codewords,
+                                                  qr_version,
+                                                  error_correction_level)
+
+            print_bitstream(bitstream)
 
         except QRDecodeError as exc:
             # If decoding fails on the first finder triplet,
