@@ -10,7 +10,7 @@ Only Model 2 QR codes are supported.
 
 
 import numpy as np
-from PIL import Image
+import PIL
 
 
 class QRDecodeError(Exception):
@@ -102,11 +102,11 @@ def decode_format_word(raw_word):
     return raw_word >> 10
 
 
-def quantize_image(image: Image) -> np.ndarray:
+def quantize_image(image):
     """Quantize the specified image into black and white pixels.
 
     Parameters:
-        image: Input image (PIL.Image).
+        image (PIL.Image): Input image.
 
     Returns:
         2D Numpy array where 0 = black, 1 = white.
@@ -173,7 +173,7 @@ def check_position_detection(bounds):
 
     # Expected relative positions of black/white boundaries
     # within the position detection pattern.
-    expect_bound_pos = [ -3.5, -2.5, -1.5, 1.5, 2.5, 3.5 ]
+    expect_bound_pos = [-3.5, -2.5, -1.5, 1.5, 2.5, 3.5]
 
     if (len(bounds) != 6) or (bounds[4] >= bounds[5]):
         return (0, 0)
@@ -199,11 +199,11 @@ def check_position_detection(bounds):
     return (center, pitch)
 
 
-def find_position_detection_patterns(img_data: np.ndarray) -> list:
+def find_position_detection_patterns(img_data):
     """Locate QR code position detection patterns.
 
     Parameters:
-        img_data: 2D Numpy array containing black-and-white image.
+        img_data (ndarray): 2D Numpy array containing black-and-white image.
 
     Returns:
         List of tuples (x, y, dx, dy).
@@ -263,12 +263,15 @@ def find_position_detection_patterns(img_data: np.ndarray) -> list:
     return patterns
 
 
-def make_finder_triplets(patterns: list) -> list:
+def make_finder_triplets(patterns):
     """Select three position detection patterns that could
     together form the finder pattern for a QR code.
 
     If multiple finder triplets are feasible, return them all,
     starting with the highest QR code version.
+
+    Parameters:
+        patterns: List of tuples describing position detection patterns.
 
     Returns:
         List of tuples (finder_ul, finder_ur, finder_dl).
@@ -298,7 +301,7 @@ def make_finder_triplets(patterns: list) -> list:
             xsep = 2 * abs(cx - hcx) / (dx + hdx)
             if xsep < 12:
                 continue
-            
+
             # Search a matching pattern with vertical separation.
             for fndv in patterns:
                 (vcx, vcy, vdx, vdy) = fndv
@@ -804,7 +807,7 @@ def get_block_structure(qr_version, error_correction_level):
     error_correction_table = {"L": 0, "M": 1, "Q": 2, "H": 3}
     level_code = error_correction_table[error_correction_level]
 
-    n_codewords = num_codewords_table[qr_version]    
+    n_codewords = num_codewords_table[qr_version]
     (n_check_words, n_blocks) = block_structure_table[qr_version][level_code]
 
     return (n_codewords, n_check_words, n_blocks)
