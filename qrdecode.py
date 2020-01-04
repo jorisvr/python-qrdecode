@@ -984,25 +984,25 @@ def rs_forney(syndrome, error_locator, error_locations):
         for i in range(min(len(error_locator), 2 * n_error - k)):
             err_eval[k + i] ^= rs_mul(syndrome[k], error_locator[i])
 
-    # Calculate the derivative of the error locator polynomial.
+    # Calculate the coefficients of the formal derivative of
+    # the error locator polynomial.
     errloc_deriv = np.zeros(len(error_locator)-1, dtype=np.uint8)
-    for i in range(1, len(error_locator), 2):
-        errloc_deriv[i-1] = error_locator[i]
+    for i in range(1, len(error_locator)):
+        if i % 2 == 1:
+            errloc_deriv[i-1] = error_locator[i]
 
     # Calculate the error values:
-    #   e[i] = X[i] * err_eval(X[i]**(-1)) / errloc_deriv(X[i]**(-1))
+    #   e[k] = X[k] * err_eval(1/X[k]) / errloc_deriv(1/X[k])
     #
-    #   where X[i] = a**error_locations[i]
+    #   where X[k] = a**error_locations[k]
     #
     error_values = np.zeros(n_error, dtype=np.uint8)
-    for i in range(n_error):
-        x = reed_solomon_gf8_exp[error_locations[i]]
-        xinv = reed_solomon_gf8_exp[255-error_locations[i]]
+    for k in range(n_error):
+        x = reed_solomon_gf8_exp[error_locations[k]]
+        xinv = reed_solomon_gf8_exp[255-error_locations[k]]
         v_err_eval = rs_eval_poly(err_eval, xinv)
         v_errloc_deriv = rs_eval_poly(errloc_deriv, xinv)
-        # TODO : prove that this assertion can not trigger
-        assert v_errloc_deriv != 0
-        error_values[i] = rs_div(rs_mul(x, v_err_eval), v_errloc_deriv)
+        error_values[k] = rs_div(rs_mul(x, v_err_eval), v_errloc_deriv)
 
     return error_values
 
