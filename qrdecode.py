@@ -13,6 +13,33 @@ import numpy as np
 import PIL
 
 
+# The Reed-Solomon codes for QR error correction are computed over
+# the finite field GF(2**8) = GF(2)[a] / (a**8 + a**4 + a**3 + a**2 + 1).
+#
+# Elements of this field are represented as 8-bit unsigned integers,
+# where each bit represents a coefficient of the polynomial with
+# the least significant bit corresponding to the lowest order term.
+#
+# The element "a" (represented as integer value 2) is a primitive element
+# of this field.
+#
+REED_SOLOMON_GF8_POLY = 0b100011101
+
+
+# Construct lookup tables for exp/log:
+#   reed_solomon_gf8_exp[k] = a**k
+#   reed_solomon_gf8_log[a**k] = k
+reed_solomon_gf8_exp = bytearray(256)
+reed_solomon_gf8_log = bytearray(256)
+reed_solomon_gf8_exp[0] = 1
+v = 1
+for i in range(1, 256):
+    v = (v << 1) ^ ((v >> 7) * REED_SOLOMON_GF8_POLY)
+    reed_solomon_gf8_exp[i] = v
+    reed_solomon_gf8_log[v] = i
+del i, v
+
+
 class QRDecodeError(Exception):
     """Raised when QR decoding fails."""
     pass
@@ -745,7 +772,7 @@ def get_block_structure(qr_version, error_correction_level):
         error_correction_level (str):   Error correction level (L, M, Q or H).
 
     Returns:
-        Tuple (n_codewords, n_error_correction_words, n_blocks).
+        Tuple (n_codewords, n_check_words, n_blocks, max_errors).
     """
 
     num_codewords_table = {
@@ -810,7 +837,314 @@ def get_block_structure(qr_version, error_correction_level):
     n_codewords = num_codewords_table[qr_version]
     (n_check_words, n_blocks) = block_structure_table[qr_version][level_code]
 
-    return (n_codewords, n_check_words, n_blocks)
+    assert n_check_words % n_blocks == 0
+    max_errors = n_check_words // n_blocks // 2
+    if max_errors < 6:
+        max_errors -= 1
+
+    return (n_codewords, n_check_words, n_blocks, max_errors)
+
+
+def rs_mul(a, b):
+    """Multiply two elements of GF(2**8) as used in the Reed Solomon code.
+
+    Parameters:
+        a (int): Integer in range 0 .. 255.
+        b (int): Integer in range 0 .. 255.
+
+    Returns:
+        Product in GF(2**8) as an integer in range 0 .. 255.
+    """
+
+    if a == 0 or b == 0:
+        return 0
+
+    # a * b == exp(log(a) + log(b))
+    loga = reed_solomon_gf8_log[a]
+    logb = reed_solomon_gf8_log[b]
+    result = reed_solomon_gf8_exp[(loga + logb) % 255]
+
+    return result
+
+
+def rs_div(a, b):
+    """Divide two elements of GF(2**8) as used in the Reed Solomon code.
+
+    Parameters:
+        a (int): Dividend, range 0 .. 255.
+        b (int): Divisor, range 1 .. 255.
+
+    Returns:
+        Quatient a / b in GF(2**8) as an integer in range 0 .. 255.
+    """
+
+    if a == 0 or b == 0:
+        return 0
+
+    # a / b == exp(log(a) - log(b))
+    loga = reed_solomon_gf8_log[a]
+    logb = reed_solomon_gf8_log[b]
+    result = reed_solomon_gf8_exp[(255 + loga - logb) % 255]
+
+    return result
+
+
+def rs_eval_poly(poly, x):
+    """Evaluate a polynomial within GF(2**8) as used in the Reed Solomon code.
+
+    Parameters:
+        poly (ndarray): Array of coefficients of the polynomial,
+            starting with the zero-order term.
+        x (int): Element to evaluate.
+
+    Returns:
+        Value of the polynomial at "x" as an integer.
+    """
+    n = len(poly) - 1
+    ret = poly[n]
+    for i in range(n):
+        ret = rs_mul(ret, x) ^ poly[n-1-i]
+    return ret
+
+
+def rs_berlekamp_massey(syndrome):
+    """Use the Berlekamp-Massey algorithm to calculate
+    the error locator polynomial for the specified set of syndromes.
+
+    All calculations are in the GF(2**8) field of the Reed Solomon code.
+
+    Parameters:
+        syndrome (ndarray):     Array of syndromes.
+
+    Returns:
+        Array of coefficients of the error locator polynomial.
+    """
+
+    # See https://en.wikipedia.org/wiki/Berlekamp-Massey_algorithm
+
+    n = len(syndrome)
+    poly = np.zeros(n + 1, dtype=np.uint8)
+    poly[0] = 1
+    prev_poly = np.copy(poly)
+    l = 0
+    prev_l = 0
+    b = 1
+    m = 1
+
+    for k in range(n):
+        assert prev_l + m == k + 1 - l
+        d = syndrome[k]
+        for i in range(1, l+1):
+            d ^= rs_mul(syndrome[k-i], poly[i])
+        if d == 0:
+            m += 1
+        else:
+            ratio = rs_div(d, b)
+            if 2 * l <= k:
+                for i in range(prev_l, -1, -1):
+                    prev_poly[i+m] = poly[i+m]
+                    poly[i+m] ^= rs_mul(prev_poly[i], ratio)
+                prev_poly[:m] = poly[:m]
+                prev_l = l
+                l = k + 1 - l
+                b = d
+                m = 1
+            else:
+                assert prev_l + m <= l
+                for i in range(prev_l + 1):
+                    poly[i+m] ^= rs_mul(prev_poly[i], ratio)
+                m += 1
+
+    return poly[:l+1]
+
+
+def rs_forney(syndrome, error_locator, error_locations):
+    """Use Forney's algorithm to calculate the error values.
+
+    Parameters:
+        syndrome (ndarray): Array of syndromes.
+        error_locator (ndarray): Coefficients of the error_locator polynomial.
+        error_locations (list): Error locations.
+
+    Returns:
+        Array with error value for each listed error location.
+    """
+
+    # See https://en.wikipedia.org/wiki/Forney_algorithm
+
+    n_error = len(error_locations)
+    assert len(syndrome) >= 2 * n_error
+
+    # Calculate the coefficients of the error evaluator polynomial.
+    #   err_eval(x) = syndrome(x) * error_locator(x) (mod x**(2*n_error))
+    err_eval = np.zeros(2 * n_error, dtype=np.uint8)
+    for k in range(2 * n_error):
+        for i in range(min(len(error_locator), 2 * n_error - k)):
+            err_eval[k + i] ^= rs_mul(syndrome[k], error_locator[i])
+
+    # Calculate the derivative of the error locator polynomial.
+    errloc_deriv = np.zeros(len(error_locator)-1, dtype=np.uint8)
+    for i in range(1, len(error_locator), 2):
+        errloc_deriv[i-1] = error_locator[i]
+
+    # Calculate the error values:
+    #   e[i] = X[i] * err_eval(X[i]**(-1)) / errloc_deriv(X[i]**(-1))
+    #
+    #   where X[i] = a**error_locations[i]
+    #
+    error_values = np.zeros(n_error, dtype=np.uint8)
+    for i in range(n_error):
+        x = reed_solomon_gf8_exp[error_locations[i]]
+        xinv = reed_solomon_gf8_exp[255-error_locations[i]]
+        v_err_eval = rs_eval_poly(err_eval, xinv)
+        v_errloc_deriv = rs_eval_poly(errloc_deriv, xinv)
+        # TODO : prove that this assertion can not trigger
+        assert v_errloc_deriv != 0
+        error_values[i] = rs_div(rs_mul(x, v_err_eval), v_errloc_deriv)
+
+    return error_values
+
+
+# TODO : Remove this function when it becomes clear that
+#        rs_forney is working correctly.
+def rs_gauss(syndrome, error_locations):
+    """Use Gauss elimination to calculate the error values.
+
+    Parameters:
+        syndrome (ndarray): Array of syndromes.
+        error_locations (list): Error locations.
+
+    Returns:
+        Array with error value for each listed error location.
+    """
+
+    n_error = len(error_locations)
+    n_check = len(syndrome)
+
+    matrix = np.zeros((n_check, n_error + 1), dtype=np.uint8)
+    for k in range(n_error):
+        for i in range(n_check):
+            matrix[i, k] = reed_solomon_gf8_exp[(error_locations[k] * i) % 255]
+    matrix[:, n_error] = syndrome
+    for k in range(n_error):
+        i = k
+        while i < n_check and matrix[i, k] == 0:
+            i += 1
+        assert i < n_check
+        q = np.copy(matrix[k])
+        matrix[k] = matrix[i]
+        matrix[i] = q
+        q = matrix[k, k]
+        assert q != 0
+        for col in range(k, n_error+1):
+            matrix[k, col] = rs_div(matrix[k, col], q)
+        for i in range(k+1, n_check):
+            q = matrix[i, k]
+            for col in range(k, n_error+1):
+                matrix[i, col] ^= rs_mul(matrix[k, col], q)
+    assert np.all(matrix[n_error:, n_error] == 0)
+    error_values = np.zeros(n_error, dtype=np.uint8)
+    for k in range(n_error-1, -1, -1):
+        w = matrix[k, n_error]
+        for i in range(k+1, n_error):
+            w ^= rs_mul(error_values[i], matrix[k, i])
+        error_values[k] = w
+    return error_values
+
+
+def rs_error_correction(data_words, check_words, max_errors):
+    """Perform Reed-Solomon error correction on a message block.
+
+    Parameters:
+        data_words (ndarray):   Array of received data words.
+        check_words (ndarray):  Array of received error correction words.
+        max_errors (int):       Maximum number of errors to correct.
+
+    Returns:
+        Array of corrected message words.
+
+    Raises:
+        QRDecodeError: If error correction fails.
+    """
+
+    n_data_words = len(data_words)
+    n_check_words = len(check_words)
+    n_received_words = n_data_words + n_check_words
+    received_words = np.concatenate((data_words, check_words))
+
+    print((n_received_words, n_data_words, max_errors))
+
+    #
+    # See also https://en.wikipedia.org/wiki/Reed-Solomon_error_correction
+    #
+    # The received words (data words followed by error check words)
+    # form a polynomial over GF(2**8):
+    #   R(x) = r0 + r1 * x + r2 * x**2 + r3 * x**3 + ...
+    #
+    # Note that the first received word is the coefficient for the
+    # highest-powered term of the polynomial (r0 is the last received word).
+    #
+    # Calculate the error syndromes for k = 0 .. (n_check_words-1):
+    #   syndrome[k] = R(a**k)
+    #
+    # Note that "a" (represented as integer value 2) is a primitive element
+    # of GF(2**8).
+    #
+    received_poly = received_words[::-1]
+    syndrome = np.zeros(n_check_words, dtype=np.uint8)
+    for k in range(n_check_words):
+        x = reed_solomon_gf8_exp[k]
+        syndrome[k] = rs_eval_poly(received_poly, x)
+
+    print("syndrome =", syndrome)
+
+    # Quick check if all syndromes are zero.
+    if np.all(syndrome == 0):
+        # No errors, just return the data words.
+        return data_words
+
+    # Determine the error locator polynomial.
+    error_locator = rs_berlekamp_massey(syndrome)
+
+    n_error = len(error_locator) - 1
+    if n_error > max_errors:
+        raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
+
+    # Find the roots of the error locator polynomial.
+    # These represent the error locations.
+    error_locations = []
+    for k in range(n_received_words):
+        x = reed_solomon_gf8_exp[255-k]
+        v = rs_eval_poly(error_locator, x)
+        if v == 0:
+            error_locations.append(k)
+
+    print("error_locations =", error_locations)
+
+    if len(error_locations) != n_error:
+        raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
+
+    # Use Forney's algorithm to find the error values.
+    error_values = rs_forney(syndrome, error_locator, error_locations)
+
+    print("error_values =", error_values)
+
+    # Correct errors.
+    # Note: location 0 is the last received word.
+    for i in range(n_error):
+        k = n_received_words - 1 - error_locations[i]
+        received_words[k] ^= error_values[i]
+
+    # Double check that the syndrome is all-zero after error correction.
+    # TODO : Remove this when it becomes clear that this can not fail.
+    received_poly = received_words[::-1]
+    syndrome = np.zeros(n_check_words, dtype=np.uint8)
+    for k in range(n_check_words):
+        x = reed_solomon_gf8_exp[k]
+        syndrome[k] = rs_eval_poly(received_poly, x)
+    assert np.all(syndrome == 0)
+
+    return received_words[:n_data_words]
 
 
 def codeword_error_correction(codewords, qr_version, error_correction_level):
@@ -828,36 +1162,34 @@ def codeword_error_correction(codewords, qr_version, error_correction_level):
         QRDecodeError: If error correction fails.
     """
 
-    (n_codewords, n_check_words, n_blocks
+    (n_codewords, n_check_words, n_blocks, max_errors
         ) = get_block_structure(qr_version, error_correction_level)
 
     assert len(codewords) == n_codewords
-
-    assert n_check_words % n_blocks == 0
-    n_check_words_per_block = n_check_words // n_blocks
 
     n_data_words = n_codewords - n_check_words
     n_data_words_per_block = n_data_words // n_blocks
     n_long_blocks = n_data_words % n_blocks
 
-    blocks = []
+    corrected_data = []
+
     for i in range(n_blocks):
+
+        # Collect data words from codeword sequence.
         k = i + n_blocks * n_data_words_per_block
         data_words = codewords[i:k:n_blocks]
         if i >= n_blocks - n_long_blocks:
             extra_word = codewords[n_data_words-n_blocks+i]
             data_words = np.append(data_words, (extra_word,))
+
+        # Collect error correction words from codeword sequence.
         check_words = codewords[n_data_words+i::n_blocks]
-        blocks.append(np.concatenate((data_words, check_words)))
 
-    # This code simply discards the error correction words.
-    # TODO : perform error correction
+        # Perform Reed-Solomon error correction.
+        message = rs_error_correction(data_words, check_words, max_errors)
+        corrected_data.append(message)
 
-    all_data_words = []
-    for i in range(n_blocks):
-        all_data_words.append(blocks[i][:-n_check_words_per_block])
-
-    return np.concatenate(all_data_words)
+    return np.concatenate(corrected_data)
 
 
 def codewords_to_bitstream(codewords):
@@ -1116,7 +1448,7 @@ def decode_qrcode(image):
         image (PIL.Image): Input image.
 
     Returns:
-        Decoded data as a string.
+        Decoded data as a byte string.
 
     Raises:
         QRDecodeError: If decoding fails.
@@ -1164,8 +1496,6 @@ def decode_qrcode(image):
 
             # Extract codewords from the QR matrix.
             codewords = extract_codewords(matrix, mask_pattern)
-
-            print(codewords)
 
             # Unpack codeword sequence and perform error correction.
             bitstream = codeword_error_correction(codewords,
