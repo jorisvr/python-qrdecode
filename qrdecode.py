@@ -878,7 +878,9 @@ def rs_div(a, b):
         Quatient a / b in GF(2**8) as an integer in range 0 .. 255.
     """
 
-    if a == 0 or b == 0:
+    assert b != 0
+
+    if a == 0:
         return 0
 
     # a / b == exp(log(a) - log(b))
