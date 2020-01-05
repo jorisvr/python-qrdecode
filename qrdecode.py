@@ -1,9 +1,10 @@
 """
-Decoding of high-quality QR codes.
+Decoding QR codes from high-quality images.
 
 The algorithms in this module are unsophisticated and will
 only work for computer generated, non-rotated, undamaged
-QR codes. Forget about processing photographed QR codes.
+QR codes. This module can not be used to process QR codes
+from photographs or scanned images.
 
 Only Model 2 QR codes are supported.
 """
@@ -33,11 +34,11 @@ reed_solomon_gf8_exp = bytearray(256)
 reed_solomon_gf8_log = bytearray(256)
 reed_solomon_gf8_exp[0] = 1
 v = 1
-for i in range(1, 256):
+for k in range(1, 256):
     v = (v << 1) ^ ((v >> 7) * REED_SOLOMON_GF8_POLY)
-    reed_solomon_gf8_exp[i] = v
-    reed_solomon_gf8_log[v] = i
-del i, v
+    reed_solomon_gf8_exp[k] = v
+    reed_solomon_gf8_log[v] = k
+del k, v
 
 
 class QRDecodeError(Exception):
