@@ -1,0 +1,35 @@
+[
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "Qr-1.png",
+      "text": "Ver1" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "Qr-2.png",
+      "text": "Version 2" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "Qr-3.png",
+      "text": "Version 3 QR Code" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "Qr-4.png",
+      "text": "Version 4 QR Code, up to 50 char" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "Qr-code-ver-10.png",
+      "text": "VERSION 10 QR CODE, UP TO 174 CHAR AT H LEVEL, WITH 57X57 MODULES AND PLENTY OF ERROR CORRECTION TO GO AROUND.  NOTE THAT THERE ARE ADDITIONAL TRACKING BOXES" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "212px-QR_Code_Damaged.jpg",
+      "text": "http://en.m.wikipedia.org" },
+
+    { "source": "https://en.wikipedia.org/wiki/Qr_code",
+      "file": "QRCode-1-Intro.png",
+      "text": "Mr. Watson, come here - I want to see you." },
+
+    { "source": "https://research.swtch.com/qr/draw",
+      "file": "qart_6L.png",
+      "text": "https://en.wikipedia.org/wiki/QR_code#341341429383959992563502682682330681341338447619959960012341266701351499272032042722683958594681341576255958516914682685346677341342913097959958005362682679603298597341320063959955263438682681344687341343681007959976000853426" }
+
+]
