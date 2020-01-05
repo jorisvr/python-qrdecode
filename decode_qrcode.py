@@ -31,7 +31,7 @@ def main():
 
     try:
         if args.debug is not None:
-            data_bytes = qrdecode.decode_qrcode(img, debug=args.debug)
+            data_bytes = qrdecode.decode_qrcode(img, debug_level=args.debug)
         else:
             data_bytes = qrdecode.decode_qrcode(img)
     except qrdecode.QRDecodeError as exc:

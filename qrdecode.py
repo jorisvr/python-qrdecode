@@ -8,7 +8,7 @@ QR codes. Forget about processing photographed QR codes.
 Only Model 2 QR codes are supported.
 """
 
-
+import sys
 import numpy as np
 import PIL
 
@@ -43,6 +43,11 @@ del i, v
 class QRDecodeError(Exception):
     """Raised when QR decoding fails."""
     pass
+
+
+def debug_msg(msg):
+    """Print a debug message."""
+    print(msg, file=sys.stderr)
 
 
 def bits_to_word(bits):
@@ -1054,13 +1059,14 @@ def rs_gauss(syndrome, error_locations):
     return error_values
 
 
-def rs_error_correction(data_words, check_words, max_errors):
+def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     """Perform Reed-Solomon error correction on a message block.
 
     Parameters:
         data_words (ndarray):   Array of received data words.
         check_words (ndarray):  Array of received error correction words.
         max_errors (int):       Maximum number of errors to correct.
+        debug_level (int):      Optional debug level.
 
     Returns:
         Array of corrected message words.
@@ -1074,7 +1080,9 @@ def rs_error_correction(data_words, check_words, max_errors):
     n_received_words = n_data_words + n_check_words
     received_words = np.concatenate((data_words, check_words))
 
-    print((n_received_words, n_data_words, max_errors))
+    if debug_level >= 2:
+        debug_msg("REED-SOLOMON: ({}, {}, r={})"
+                  .format(n_received_words, n_data_words, max_errors))
 
     #
     # See also https://en.wikipedia.org/wiki/Reed-Solomon_error_correction
@@ -1098,12 +1106,13 @@ def rs_error_correction(data_words, check_words, max_errors):
         x = reed_solomon_gf8_exp[k]
         syndrome[k] = rs_eval_poly(received_poly, x)
 
-    print("syndrome =", syndrome)
-
     # Quick check if all syndromes are zero.
     if np.all(syndrome == 0):
         # No errors, just return the data words.
         return data_words
+
+    if debug_level >= 3:
+        debug_msg("  syndrome = " + str(syndrome))
 
     # Determine the error locator polynomial.
     error_locator = rs_berlekamp_massey(syndrome)
@@ -1111,6 +1120,9 @@ def rs_error_correction(data_words, check_words, max_errors):
     n_error = len(error_locator) - 1
     if n_error > max_errors:
         raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
+
+    if debug_level >= 1:
+        debug_msg("REED-SOLOMON: {} errors".format(n_error))
 
     # Find the roots of the error locator polynomial.
     # These represent the error locations.
@@ -1121,15 +1133,14 @@ def rs_error_correction(data_words, check_words, max_errors):
         if v == 0:
             error_locations.append(k)
 
-    print("error_locations =", error_locations)
+    if debug_level >= 3:
+        debug_msg("  error_locations = " + str(error_locations))
 
     if len(error_locations) != n_error:
         raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
 
     # Use Forney's algorithm to find the error values.
     error_values = rs_forney(syndrome, error_locator, error_locations)
-
-    print("error_values =", error_values)
 
     # Correct errors.
     # Note: location 0 is the last received word.
@@ -1149,13 +1160,17 @@ def rs_error_correction(data_words, check_words, max_errors):
     return received_words[:n_data_words]
 
 
-def codeword_error_correction(codewords, qr_version, error_correction_level):
+def codeword_error_correction(codewords,
+                              qr_version,
+                              error_correction_level,
+                              debug_level=0):
     """Perform error correction and return only the data codewords.
 
     Parameters:
         codewords (ndarray):            Array of codewords in placement order.
         qr_version (int):               QR code version
         error_correction_level (str):   Error correction level (L, M, Q or H).
+        debug_level (int):              Optional debug level.
 
     Returns:
         Array of error-corrected data codewords.
@@ -1188,31 +1203,13 @@ def codeword_error_correction(codewords, qr_version, error_correction_level):
         check_words = codewords[n_data_words+i::n_blocks]
 
         # Perform Reed-Solomon error correction.
-        message = rs_error_correction(data_words, check_words, max_errors)
+        message = rs_error_correction(data_words,
+                                      check_words,
+                                      max_errors,
+                                      debug_level)
         corrected_data.append(message)
 
     return np.concatenate(corrected_data)
-
-
-def codewords_to_bitstream(codewords):
-    """Convert data codewords to flat bitstream.
-
-    Parameters:
-        codewords (ndarray): Array of 8-bit data codewords (error-corrected).
-
-    Returns:
-        Array of bits.
-    """
-
-    # Create Nx8 array with the codeword values repeated in each column.
-    (n_codewords,) = codewords.shape
-    bits = np.repeat(codewords, repeats=8).reshape((n_codewords, 8))
-
-    # Extract bits.
-    bits = (bits >> (np.arange(8)[::-1])) & 1
-
-    # Return flat bitstream.
-    return bits.flatten()
 
 
 def get_bits_from_stream(bitstream, position, num_bits):
@@ -1418,9 +1415,10 @@ def decode_bitstream(bitstream, qr_version):
     return bytes(decoded_data)
 
 
-def print_matrix(matrix):
-    """Show the matrix on screen."""
+def matrix_to_string(matrix):
+    """Format the QR matrix as a string."""
 
+    lines = []
     qrsize = matrix.shape[0]
     for y in range(qrsize):
         s = []
@@ -1431,23 +1429,25 @@ def print_matrix(matrix):
                 s.append("X")
             else:
                 s.append("?")
-        print(" ", " ".join(s))
+        lines.append("  " + " ".join(s))
+    return "\n".join(lines)
 
 
-def print_bitstream(bitstream):
-    """Show the bitstream on screen."""
+def bitstream_to_string(bitstream):
+    """Format the bitstream as a string."""
     bits = []
     for word in bitstream:
         for k in range(8):
             bits.append((word >> (7 - k)) & 1)
-    print("".join(map(str, bits)))
+    return "".join(map(str, bits))
 
 
-def decode_qrcode(image):
+def decode_qrcode(image, debug_level=0):
     """Decode the QR code in the specified image.
 
     Parameters:
         image (PIL.Image): Input image.
+        debug_level (int): Optional debug level (0..3).
 
     Returns:
         Decoded data as a byte string.
@@ -1461,6 +1461,11 @@ def decode_qrcode(image):
 
     # Locate position detection patterns.
     patterns = find_position_detection_patterns(img_data)
+
+    if debug_level >= 2:
+        debug_msg("POSITION DETECTION PATTERNS:")
+        for pattern in patterns:
+            debug_msg("  " + str(pattern))
 
     if len(patterns) < 3:
         npattern = len(patterns)
@@ -1479,22 +1484,34 @@ def decode_qrcode(image):
     first_exception = None
     for triplet in finder_triplets:
 
-        print(triplet)
+        if debug_level >= 1:
+            debug_msg("FINDER TRIPLET:")
+            for fnd in triplet:
+                debug_msg("  " + str(fnd))
 
         try:
             # Extract QR code location, orientation and version.
             transform, qr_version = locate_qr_code(img_data, triplet)
 
+            if debug_level >= 2:
+                debug_msg("AFFINE TRANSFORM:")
+                debug_msg(str(transform))
+
             # Sample the QR matrix.
             matrix = sample_qr_matrix(img_data, transform, qr_version)
 
-            print_matrix(matrix)
+            if debug_level >= 3:
+                debug_msg(matrix_to_string(matrix))
 
             # Extract format information.
             (error_correction_level, mask_pattern
                 ) = extract_format_data(matrix)
 
-            print(qr_version, error_correction_level, mask_pattern)
+            if debug_level >= 1:
+                debug_msg("QR VERSION: {} {} mask={}"
+                          .format(qr_version,
+                                  error_correction_level,
+                                  mask_pattern))
 
             # Extract codewords from the QR matrix.
             codewords = extract_codewords(matrix, mask_pattern)
@@ -1502,9 +1519,11 @@ def decode_qrcode(image):
             # Unpack codeword sequence and perform error correction.
             bitstream = codeword_error_correction(codewords,
                                                   qr_version,
-                                                  error_correction_level)
+                                                  error_correction_level,
+                                                  debug_level)
 
-            print_bitstream(bitstream)
+            if debug_level >= 3:
+                debug_msg("BITSTREAM: " + bitstream_to_string(bitstream))
 
         except QRDecodeError as exc:
             # If decoding fails on the first finder triplet,
@@ -1512,6 +1531,8 @@ def decode_qrcode(image):
             # If all triplets fail, report the error from the first triplet.
             if first_exception is None:
                 first_exception = exc
+            if debug_level >= 1:
+                debug_msg("FAILED: " + str(exc))
             continue
 
         # Successfully extracted a bitstream from the QR code.
