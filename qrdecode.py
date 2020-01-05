@@ -368,12 +368,17 @@ def make_finder_triplets(patterns):
                 # Estimate QR code version.
                 qrver = (0.5 * (xsep + ysep) - 10) / 4.0
 
-                finder_triplets.append((qrver, (fnd, fnd_ur, fnd_dl)))
+                # Bonus point if QR code is non-rotated.
+                score = qrver
+                if hcx > cx and vcy > cy:
+                    score += 1
 
-    # Sort by decreasing QR version.
+                finder_triplets.append((score, (fnd, fnd_ur, fnd_dl)))
+
+    # Sort by decreasing score.
     finder_triplets.sort(reverse=True)
 
-    return [triplet for (qrver, triplet) in finder_triplets]
+    return [triplet for (score, triplet) in finder_triplets]
 
 
 def extract_qr_version(img_data, finder_ul, finder_ur):
@@ -457,7 +462,9 @@ def locate_qr_code(img_data, triplet):
     (dl_cx, dl_cy, dl_dx, dl_dy) = finder_dl
 
     # Estimate the QR code version based on horizontal data.
-    qrver = round((2 * abs(ul_cx - ur_cx) / (ul_dx + ur_dx) - 10) / 4)
+    hdist = ((2 * (ul_cx - ur_cx) / (ul_dx + ur_dx))**2
+             + (2 * (ul_cy - ur_cy) / (ul_dy + ur_dy))**2)**0.5
+    qrver = round((hdist - 10) / 4)
 
     # For QR versions higher than 6, decode the version information.
     if qrver > 6:
@@ -508,6 +515,11 @@ def sample_qr_matrix(img_data, transform, qr_version):
 
     xidx = xidx.astype(np.int32)
     yidx = yidx.astype(np.int32)
+
+    # Clip coordinates to the image area.
+    (nrow, ncol) = img_data.shape
+    xidx = np.clip(xidx, 0, ncol - 1)
+    yidx = np.clip(yidx, 0, nrow - 1)
 
     matrix = img_data[yidx, xidx]
     matrix = 1 - matrix
