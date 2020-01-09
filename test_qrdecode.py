@@ -28,10 +28,6 @@ class TestImageFiles(unittest.TestCase):
         # source: https://en.wikipedia.org/wiki/Qr_code
         self.run_test("Qr-2.png", "Version 2")
 
-    def test_qr_2(self):
-        # source: https://en.wikipedia.org/wiki/Qr_code
-        self.run_test("Qr-2.png", "Version 2")
-
     def test_qr_3(self):
         # source: https://en.wikipedia.org/wiki/Qr_code
         self.run_test("Qr-3.png", "Version 3 QR Code")
@@ -101,14 +97,24 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
         qr.make(fit=False)
         return qr.make_image(image_factory=qrcode.image.pil.PilImage)
 
-    def gen_text_8bit(self, nchar, start):
+    def gen_text_numeric(self, nchar):
+        """Generate a test string containing decimal digits."""
+        data_chars = [str(i % 10) for i in range(nchar)]
+        return "".join(data_chars)
+
+    def gen_text_alphanum(self, nchar):
+        """Generate a test string containing alphanumeric characters."""
+        alphanum = [str(i) for i in range(10)]
+        alphanum += [chr(ord("A") + i) for i in range(26)]
+        alphanum += list(" $%*+-./:")
+        assert len(alphanum) == 45
+        data_chars = [alphanum[(2*i) % 45] for i in range(nchar)]
+        return "".join(data_chars)
+
+    def gen_text_8bit(self, nchar):
         """Generate a test string containing 8-bit bytes."""
-        data = bytearray(nchar)
-        v = start
-        for i in range(nchar):
-            data[i] = v
-            v = (v + 17) % 127
-        return data.decode("ascii")
+        data_chars = [chr((5 * i + 97) % 127) for i in range(nchar)]
+        return "".join(data_chars)
 
     def run_test(self, data, **kwargs):
         """Generate a QR code, then decode it and verify the decoding."""
@@ -141,32 +147,78 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
         self.run_test("ghijklm", ver=1, errlvl="H")
 
     #
-    # Test progressively larger QR codes.
+    # Test larger QR codes.
     #
 
     def test_6l(self):
-        text = self.gen_text_8bit(125, 0)
+        text = self.gen_text_8bit(125)
         self.run_test(text, ver=6, errlvl="L")
 
     def test_8m(self):
-        text = self.gen_text_8bit(145, 17)
+        text = self.gen_text_8bit(145)
         self.run_test(text, ver=8, errlvl="M")
 
     def test_12q(self):
-        text = self.gen_text_8bit(195, 25)
+        text = self.gen_text_8bit(195)
         self.run_test(text, ver=12, errlvl="Q")
 
     def test_20h(self):
-        text = self.gen_text_8bit(375, 42)
+        text = self.gen_text_8bit(375)
         self.run_test(text, ver=20, errlvl="H")
 
     def test_40h(self):
-        text = self.gen_text_8bit(1265, 51)
+        text = self.gen_text_8bit(1265)
         self.run_test(text, ver=40, errlvl="H")
 
-    # TODO : test all mask patterns
-    # TODO : test all encodings
-    # TODO : test all (version, error_correction) combinations
+    #
+    # Test different character encoding modes.
+    #
+
+    def test_6m_numeric(self):
+        text = self.gen_text_numeric(250)
+        self.run_test(text, ver=6, errlvl="M")
+
+    def test_7m_alphanumeric(self):
+        text = self.gen_text_alphanum(170)
+        self.run_test(text, ver=7, errlvl="M")
+
+    def test_8m_mixed_mode(self):
+        text = (self.gen_text_8bit(25)
+                + self.gen_text_numeric(60)
+                + self.gen_text_alphanum(35)
+                + self.gen_text_8bit(24)
+                + self.gen_text_numeric(55)
+                + self.gen_text_alphanum(32))
+        self.run_test(text, ver=8, errlvl="M")
+
+    #
+    # Test all mask patterns.
+    #
+
+    def test_mask_patterns(self):
+        text = self.gen_text_8bit(145)
+        for mask_pattern in range(8):
+            with self.subTest(mask_pattern=mask_pattern):
+                self.run_test(text, ver=10, errlvl="Q", mask=mask_pattern)
+
+    #
+    # Test all combinations of QR version and error correction level.
+    #
+
+    def test_all_versions_slow(self):
+        fill_factor = {"L": 0.8, "M": 0.6, "Q": 0.44, "H": 0.33}
+        for ver in range(1, 41):
+            for errlvl in "LMQH":
+                with self.subTest(ver=ver, errlvl=errlvl):
+                    nchar = int((2 * ver**2 + 12 * ver) * fill_factor[errlvl])
+                    text = self.gen_text_8bit(nchar)
+                    self.run_test(text, ver=ver, errlvl=errlvl)
+
+
+# TODO : test different scale factors
+# TODO : test awkward rescale factors
+# TODO : test rotated QR codes
+# TODO : test damaged QR codes
 
 
 if __name__ == "__main__":
