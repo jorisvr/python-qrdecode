@@ -30,14 +30,15 @@ REED_SOLOMON_GF8_POLY = 0b100011101
 # Construct lookup tables for exp/log:
 #   reed_solomon_gf8_exp[k] = a**k
 #   reed_solomon_gf8_log[a**k] = k
-reed_solomon_gf8_exp = bytearray(256)
-reed_solomon_gf8_log = bytearray(256)
-reed_solomon_gf8_exp[0] = 1
+reed_solomon_gf8_exp = 256 * [0]
+reed_solomon_gf8_log = 256 * [0]
 v = 1
 for k in range(1, 256):
     v = (v << 1) ^ ((v >> 7) * REED_SOLOMON_GF8_POLY)
     reed_solomon_gf8_exp[k] = v
     reed_solomon_gf8_log[v] = k
+reed_solomon_gf8_exp[0] = 1
+reed_solomon_gf8_log[1] = 0
 del k, v
 
 
