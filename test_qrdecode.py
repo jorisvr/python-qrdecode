@@ -218,9 +218,79 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
                     text = self.gen_text_8bit(nchar)
                     self.run_test(text, ver=ver, errlvl=errlvl)
 
+    #
+    # Test different scale factors.
+    #
 
-# TODO : test different scale factors
-# TODO : test awkward rescale factors
+    def test_1m_scale10(self):
+        text = self.gen_text_8bit(14)
+        self.run_test(text, ver=1, errlvl="M", box_size=10)
+
+    def test_1m_scale2(self):
+        text = self.gen_text_8bit(14)
+        self.run_test(text, ver=1, errlvl="M", box_size=2)
+
+    def test_1m_scale1(self):
+        text = self.gen_text_8bit(14)
+        self.run_test(text, ver=1, errlvl="M", box_size=1)
+
+    def test_40m_scale2(self):
+        text = self.gen_text_8bit(2300)
+        self.run_test(text, ver=40, errlvl="M", box_size=2)
+
+    def test_40m_scale1(self):
+        text = self.gen_text_8bit(2300)
+        self.run_test(text, ver=40, errlvl="M", box_size=1)
+
+    def test_1m_scale1p7(self):
+        # Non-integer scale factor: 1.7 pixels per module.
+        text = self.gen_text_8bit(14)
+        img = self.gen_qr_code(text, ver=1, errlvl="M", box_size=1)
+
+        (width, height) = img.size
+        width = int(1.7 * width)
+        height = int(1.7 * height)
+        img = img.resize((width, height), resample=Image.NEAREST)
+
+        self.check_qr_code(img, text)
+
+    def test_40m_scale1p7(self):
+        # Non-integer scale factor: 1.7 pixels per module.
+        text = self.gen_text_8bit(2300)
+        img = self.gen_qr_code(text, ver=40, errlvl="M", box_size=1)
+
+        (width, height) = img.size
+        width = int(1.7 * width)
+        height = int(1.7 * height)
+        img = img.resize((width, height), resample=Image.NEAREST)
+
+        self.check_qr_code(img, text)
+
+    def test_1m_scalexy(self):
+        # Different X/Y scale factor: 2.3 x 1.9 pixels per module.
+        text = self.gen_text_8bit(14)
+        img = self.gen_qr_code(text, ver=1, errlvl="M", box_size=1)
+
+        (width, height) = img.size
+        width = int(2.3 * width)
+        height = int(1.9 * height)
+        img = img.resize((width, height), resample=Image.NEAREST)
+
+        self.check_qr_code(img, text)
+
+    def test_40m_scalexy(self):
+        # Different X/Y scale factor: 2.3 x 1.9 pixels per module.
+        text = self.gen_text_8bit(2300)
+        img = self.gen_qr_code(text, ver=40, errlvl="M", box_size=1)
+
+        (width, height) = img.size
+        width = int(2.3 * width)
+        height = int(1.9 * height)
+        img = img.resize((width, height), resample=Image.NEAREST)
+
+        self.check_qr_code(img, text)
+
+
 # TODO : test rotated QR codes
 # TODO : test damaged QR codes
 
