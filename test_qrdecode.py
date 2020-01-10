@@ -116,12 +116,16 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
         data_chars = [chr((5 * i + 97) % 127) for i in range(nchar)]
         return "".join(data_chars)
 
+    def check_qr_code(self, img, expect_text):
+        """Decode a QR code and verify that it is decoded correctly."""
+        got_bytes = qrdecode.decode_qrcode(img)
+        got_text = got_bytes.decode("iso8859-1")
+        self.assertEqual(got_text, expect_text)
+
     def run_test(self, data, **kwargs):
         """Generate a QR code, then decode it and verify the decoding."""
         img = self.gen_qr_code(data, **kwargs)
-        got_bytes = qrdecode.decode_qrcode(img)
-        got_text = got_bytes.decode("iso8859-1")
-        self.assertEqual(got_text, data)
+        self.check_qr_code(img, data)
 
     #
     # Test an empty code (0 characters).
@@ -219,6 +223,67 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
 # TODO : test awkward rescale factors
 # TODO : test rotated QR codes
 # TODO : test damaged QR codes
+
+
+def dump_generated_qr_codes():
+    """Dump the QR codes from TestWithGeneratedQrCodes as image files.
+
+    This function is not normally used as part of the test, but it may
+    be useful for debugging.
+    """
+
+    import contextlib
+    import inspect
+
+    var_test_name = [None]
+    var_subtest = [None, None]
+
+    # Prepare a patched version of the method "check_qr_code()"
+    # which dumps the image to a file instead of decoding the QR code.
+    def new_check_qr_code(img, expect_text):
+        test_name = var_test_name[0]
+        subtest_msg = var_subtest[0]
+        subtest_args = var_subtest[1]
+        fname = "gen_" + test_name
+        if subtest_msg is not None:
+            fname = fname + "_" + str(subtest_msg)
+        if subtest_args is not None:
+            for (k, v) in subtest_args.items():
+                fname = fname + "_" + str(k) + str(v)
+        fname = fname + ".png"
+        fname = fname.replace("/", "_")
+        fname = fname.replace("\\", "_")
+        print("Writing", fname)
+        img.save(fname)
+
+    # Prepare a patched version of the method "subTest()" which captures
+    # the subtest information.
+    @contextlib.contextmanager
+    def new_subTest(msg=None, **kwargs):
+        var_subtest[0] = msg
+        var_subtest[1] = kwargs
+        try:
+            yield None
+        finally:
+            var_subtest[0] = None
+            var_subtest[1] = None
+
+    # Create an instance of TestWithGneratedQrCodes and patch
+    # the methods "check_qr_code()" and "subTest()".
+    testcase = TestWithGeneratedQrCodes()
+    testcase.check_qr_code = new_check_qr_code
+    testcase.subTest = new_subTest
+
+    # Call all test_XXX methods.
+    methods = inspect.getmembers(testcase, inspect.ismethod)
+    for (method_name, method) in methods:
+        if method_name.startswith("test_"):
+            # Store the test name, to be used when dumping images.
+            var_test_name[0] = method_name[5:]
+            var_subtest[0] = None
+            var_subtest[1] = None
+            # Invoke the test method.
+            method()
 
 
 if __name__ == "__main__":
