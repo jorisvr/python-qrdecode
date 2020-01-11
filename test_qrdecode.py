@@ -60,6 +60,15 @@ class TestImageFiles(unittest.TestCase):
             "qart_6L.png",
             "https://en.wikipedia.org/wiki/QR_code#341341429383959992563502682682330681341338447619959960012341266701351499272032042722683958594681341576255958516914682685346677341342913097959958005362682679603298597341320063959955263438682681344687341343681007959976000853426")
 
+    def test_qr_code_embedded(self):
+        # version-12 QR code which contains a valid version-1 QR code
+        raw_data = b"\xed\x19\xb1c\xdcai)\x91cl\xfa\x9a1iaaaaj\xa9o\x91f\xb1afa1f\x7f\taa\xcbAaaal\x82i1\t\x92\xa8\xd73!n\xa4qc\xe9\xc1Aaaad\x05d\x1c\xf9\xa4\x16\x07aa[\xff\xc1f\xfbAaaam\x94D;\xa8qf\x9b\xf1h\x80\x06o\xe1o\x0baaaaai\xfca'\xf2\xc1\xbc_\xe1h\xa1\x87aap\xf9\xc1aaaakq`6uS\xd0Z\xe1b\xac\xd1i\xa2\xaei\xe1aaaacqn\xff\xd5H\xfdaa\xba)\x01i\x93?aaaaaag\xf1o4\x91 Qc\x1b\xb0\x00\x11f,\xc1aAaaaaei_\xffz\xcc\x91d\xf9\x11aa\xf1\x93!aa"
+        self.run_test("qr_code_embedded.png", raw_data.decode("iso8859-1"))
+
+    def test_qr_code_embedded_inner(self):
+        # broken version-12 QR code which contains a valid version-1 QR code
+        self.run_test("qr_code_embedded_inner.png", "Little")
+
 
 class TestWithGeneratedQrCodes(unittest.TestCase):
     """Test decoding of programatically generated QR codes.
