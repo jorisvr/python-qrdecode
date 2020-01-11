@@ -209,7 +209,7 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
     # Test all combinations of QR version and error correction level.
     #
 
-    def test_all_versions_slow(self):
+    def test_slow_all_versions(self):
         fill_factor = {"L": 0.8, "M": 0.6, "Q": 0.44, "H": 0.33}
         for ver in range(1, 41):
             for errlvl in "LMQH":
@@ -290,8 +290,84 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
 
         self.check_qr_code(img, text)
 
+    #
+    # Test rotated QR codes (only 90, 180, 270 degrees).
+    #
 
-# TODO : test rotated QR codes
+    def test_5q_rot90(self):
+        # Note: version-5 QR codes do not contain version information.
+        text = self.gen_text_8bit(55)
+        img = self.gen_qr_code(text, ver=5, errlvl="Q")
+        img = img.rotate(90)
+        self.check_qr_code(img, text)
+
+    def test_5q_rot180(self):
+        text = self.gen_text_8bit(55)
+        img = self.gen_qr_code(text, ver=5, errlvl="Q")
+        img = img.rotate(180)
+        self.check_qr_code(img, text)
+
+    def test_5q_rot270(self):
+        text = self.gen_text_8bit(55)
+        img = self.gen_qr_code(text, ver=5, errlvl="Q")
+        img = img.rotate(270)
+        self.check_qr_code(img, text)
+
+    def test_8q_rot90(self):
+        # Note: version-8 QR codes contain version information.
+        text = self.gen_text_8bit(95)
+        img = self.gen_qr_code(text, ver=8, errlvl="Q")
+        img = img.rotate(90)
+        self.check_qr_code(img, text)
+
+    def test_8q_rot180(self):
+        text = self.gen_text_8bit(95)
+        img = self.gen_qr_code(text, ver=8, errlvl="Q")
+        img = img.rotate(180)
+        self.check_qr_code(img, text)
+
+    def test_8q_rot270(self):
+        text = self.gen_text_8bit(95)
+        img = self.gen_qr_code(text, ver=8, errlvl="Q")
+        img = img.rotate(270)
+        self.check_qr_code(img, text)
+
+    #
+    # Test rotated QR codes with different X/Y scaling.
+    #
+
+    def test_9h_rot90_scalexy(self):
+        text = self.gen_text_8bit(90)
+        img = self.gen_qr_code(text, ver=9, errlvl="H", box_size=1)
+
+        img = img.rotate(90)
+        (width, height) = img.size
+        img = img.resize((3 * width, 4 * height))
+
+        self.check_qr_code(img, text)
+
+    def test_9h_rot180_scalexy(self):
+        text = self.gen_text_8bit(90)
+        img = self.gen_qr_code(text, ver=9, errlvl="H", box_size=1)
+
+        img = img.rotate(180)
+        img = img.rotate(90)
+        (width, height) = img.size
+        img = img.resize((3 * width, 4 * height))
+
+        self.check_qr_code(img, text)
+
+    def test_9h_rot270_scalexy(self):
+        text = self.gen_text_8bit(90)
+        img = self.gen_qr_code(text, ver=9, errlvl="H", box_size=1)
+
+        img = img.rotate(270)
+        img = img.rotate(90)
+        (width, height) = img.size
+        img = img.resize((3 * width, 4 * height))
+
+        self.check_qr_code(img, text)
+
 # TODO : test damaged QR codes
 
 
