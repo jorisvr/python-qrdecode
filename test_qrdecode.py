@@ -156,6 +156,40 @@ class TestImageFiles(unittest.TestCase):
         # broken version-30 QR code which contains a valid version-2 QR code
         self.run_test("qr_code_embedded_inner.png", "Little code")
 
+    def test_qr_damaged_1L(self):
+        # single bit changed
+        self.run_test("qr_damaged_1L.png", "just 1 bit error.")
+
+    def test_qr_damaged_1Q(self):
+        self.run_test("qr_damaged_1Q.png", "damaged qr.")
+
+    def test_qr_damaged_7H(self):
+        # Two of the error correction blocks contain the maximum number of
+        # correctable errors.
+        # Block 1 has all 13 data words modified.
+        # Block 5 has 13 error correction words modified.
+        self.run_test(
+            "qr_damaged_7H.png",
+            "Maximum number of correctable errors in two blocks of this code.")
+
+    def test_qr_damaged_8L(self):
+        # Light damage to QR code image.
+        self.run_test(
+            "qr_damaged_8L.png",
+            "A version 8 code with low error correction. Funny thing that version 8L can store more data than version 12H. It shows the extreme amount of redundancy used in error correction level H.")
+
+    def test_qr_damaged_9Q(self):
+        # "Logo" decoration pasted over the middle of the QR code.
+        self.run_test(
+            "qr_damaged_9Q.png",
+            "QR codes are sometimes intentionally damaged by putting a decoration on top of the code. This relies on the error correction.")
+
+    def test_qr_damaged_12H(self):
+        # Damaged by drawing on a big part of the QR code.
+        self.run_test(
+            "qr_damaged_12H.png",
+            "A version 12 code with high error correction. We can mess it up pretty bad and still decode it correctly. Those Reed-Solomon codes are quite impressive.")
+
 
 class TestWithGeneratedQrCodes(unittest.TestCase):
     """Test decoding of programatically generated QR codes.
