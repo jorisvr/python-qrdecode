@@ -498,8 +498,6 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
 
         self.check_qr_code(img, text)
 
-# TODO : test damaged QR codes
-
 
 def dump_generated_qr_codes():
     """Dump the QR codes from TestWithGeneratedQrCodes as image files.
