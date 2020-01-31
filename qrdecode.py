@@ -1147,16 +1147,16 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
         k = n_received_words - 1 - error_locations[i]
         received_words[k] ^= error_values[i]
 
-    # Double check that the syndrome is all-zero after error correction.
-    # TODO : Remove this when it becomes clear that this can not fail.
-    received_poly = received_words[::-1]
-    syndrome = n_check_words * [0]
-    for k in range(n_check_words):
-        x = reed_solomon_gf_exp[k]
-        syndrome[k] = rs_eval_poly(received_poly, x)
-        if syndrome[k] != 0:
-            all_zero_syndrome = False
-    assert all([(x == 0) for x in syndrome])
+    ## Double check that the syndrome is all-zero after error correction.
+    ## This check is not necessary; the corrected syndrome is guaranteed
+    ## to be zero if Reed-Solomon decoding is correctly implemented.
+    ## This is a nice sanity check for debugging.
+    #received_poly = received_words[::-1]
+    #syndrome = n_check_words * [0]
+    #for k in range(n_check_words):
+    #    x = reed_solomon_gf_exp[k]
+    #    syndrome[k] = rs_eval_poly(received_poly, x)
+    #assert all([(x == 0) for x in syndrome])
 
     # Return the corrected data words.
     return received_words[:n_data_words]
