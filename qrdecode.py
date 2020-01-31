@@ -998,7 +998,7 @@ def rs_forney(syndrome, error_locator, error_locations):
 
     Parameters:
         syndrome (list):        List of syndromes.
-        error_locator (list):   Coefficients of the error_locator polynomial.
+        error_locator (list):   Coefficients of the error locator polynomial.
         error_locations (list): Error locations.
 
     Returns:
@@ -1008,13 +1008,22 @@ def rs_forney(syndrome, error_locator, error_locations):
     # See https://en.wikipedia.org/wiki/Forney_algorithm
 
     n_error = len(error_locations)
-    assert len(syndrome) >= 2 * n_error
+    assert len(error_locator) == n_error + 1
+    assert len(syndrome) >= len(error_locator) - 1
 
     # Calculate the coefficients of the error evaluator polynomial.
-    #   err_eval(x) = syndrome(x) * error_locator(x) (mod x**(2*n_error))
-    err_eval = (2 * n_error) * [0]
-    for k in range(2 * n_error):
-        for i in range(min(len(error_locator), 2 * n_error - k)):
+    #
+    #   err_eval(x) = syndrome(x) * error_locator(x)  (mod x**n_syndrome)
+    #
+    # Note that the definition of error_locator(x) guarantees that
+    # err_eval(x) will have zero-valued coefficients for all terms
+    # of degree >= n_error. Thus, the degree of err_eval(x) is at most
+    # (n_error - 1), and we only need to calculate the first n_error
+    # coefficients.
+    #
+    err_eval = (len(error_locator) - 1) * [0]
+    for k in range(len(error_locator) - 1):
+        for i in range(len(error_locator) - k - 1):
             err_eval[k + i] ^= rs_mul(syndrome[k], error_locator[i])
 
     # Calculate the coefficients of the formal derivative of
