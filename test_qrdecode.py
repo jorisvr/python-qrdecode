@@ -553,14 +553,14 @@ class TestErrorCorrection(unittest.TestCase):
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10001, block_len=25, data_len=9, n_errors=0)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_corr_25_9(self):
         # Test (25, 9) code with 8 errors (correctable).
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10002, block_len=25, data_len=9, n_errors=8)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_uncorr_25_9(self):
         # Test (25, 9) code with 9 errors (uncorrectable).
@@ -588,7 +588,7 @@ class TestErrorCorrection(unittest.TestCase):
             else:
                 rcheck[p - 9] ^= v
             decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-            self.assertEqual(list(decoded), gdata)
+            self.assertEqual(decoded, gdata)
 
     def test_corr_25_9_1err_allval(self):
         # Test (25, 9) code with 1 error (correctable).
@@ -601,21 +601,21 @@ class TestErrorCorrection(unittest.TestCase):
             rcheck = list(gcheck)
             rdata[0] ^= v
             decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-            self.assertEqual(list(decoded), gdata)
+            self.assertEqual(decoded, gdata)
 
     def test_clean_44_28(self):
         # Test (44, 28) code without errors.
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10011, block_len=44, data_len=28, n_errors=0)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_corr_44_28(self):
         # Test (44, 28) code with 8 errors (correctable).
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10012, block_len=44, data_len=28, n_errors=8)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_uncorr_44_28(self):
         # Test (44, 28) code with 9 errors (uncorrectable).
@@ -629,14 +629,14 @@ class TestErrorCorrection(unittest.TestCase):
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10021, block_len=100, data_len=80, n_errors=0)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=10)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_corr_100_80(self):
         # Test (100, 80) code with 10 errors (correctable).
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10022, block_len=100, data_len=80, n_errors=10)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=10)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_uncorr_100_80(self):
         # Test (100, 80) code with 11 errors (uncorrectable).
@@ -650,14 +650,14 @@ class TestErrorCorrection(unittest.TestCase):
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10031, block_len=153, data_len=123, n_errors=0)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=15)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_corr_153_123(self):
         # Test (153, 123) code with 15 errors (correctable).
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
             seed=10032, block_len=153, data_len=123, n_errors=15)
         decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=15)
-        self.assertEqual(list(decoded), gdata)
+        self.assertEqual(decoded, gdata)
 
     def test_uncorr_153_123(self):
         # Test (153, 123) code with 16 errors (uncorrectable).

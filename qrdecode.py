@@ -949,18 +949,18 @@ def rs_berlekamp_massey(syndrome):
     All calculations are in the GF(2**8) field of the Reed Solomon code.
 
     Parameters:
-        syndrome (ndarray):     Array of syndromes.
+        syndrome (list):        List of syndromes.
 
     Returns:
-        Array of coefficients of the error locator polynomial.
+        List of coefficients of the error locator polynomial.
     """
 
     # See https://en.wikipedia.org/wiki/Berlekamp-Massey_algorithm
 
     n = len(syndrome)
-    poly = np.zeros(n + 1, dtype=np.uint8)
+    poly = (n + 1) * [0]
     poly[0] = 1
-    prev_poly = np.copy(poly)
+    prev_poly = list(poly)
     l = 0
     prev_l = 0
     b = 1
@@ -997,12 +997,12 @@ def rs_forney(syndrome, error_locator, error_locations):
     """Use Forney's algorithm to calculate the error values.
 
     Parameters:
-        syndrome (ndarray): Array of syndromes.
-        error_locator (ndarray): Coefficients of the error_locator polynomial.
+        syndrome (list):        List of syndromes.
+        error_locator (list):   Coefficients of the error_locator polynomial.
         error_locations (list): Error locations.
 
     Returns:
-        Array with error value for each listed error location.
+        List with error value for each listed error location.
     """
 
     # See https://en.wikipedia.org/wiki/Forney_algorithm
@@ -1012,14 +1012,14 @@ def rs_forney(syndrome, error_locator, error_locations):
 
     # Calculate the coefficients of the error evaluator polynomial.
     #   err_eval(x) = syndrome(x) * error_locator(x) (mod x**(2*n_error))
-    err_eval = np.zeros(2 * n_error, dtype=np.uint8)
+    err_eval = (2 * n_error) * [0]
     for k in range(2 * n_error):
         for i in range(min(len(error_locator), 2 * n_error - k)):
             err_eval[k + i] ^= rs_mul(syndrome[k], error_locator[i])
 
     # Calculate the coefficients of the formal derivative of
     # the error locator polynomial.
-    errloc_deriv = np.zeros(len(error_locator)-1, dtype=np.uint8)
+    errloc_deriv = (len(error_locator) - 1) * [0]
     for i in range(1, len(error_locator)):
         if i % 2 == 1:
             errloc_deriv[i-1] = error_locator[i]
@@ -1029,7 +1029,7 @@ def rs_forney(syndrome, error_locator, error_locations):
     #
     #   where X[k] = a**error_locations[k]
     #
-    error_values = np.zeros(n_error, dtype=np.uint8)
+    error_values = n_error * [0]
     for k in range(n_error):
         x = reed_solomon_gf_exp[error_locations[k]]
         xinv = reed_solomon_gf_exp[255-error_locations[k]]
@@ -1044,13 +1044,13 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     """Perform Reed-Solomon error correction on a message block.
 
     Parameters:
-        data_words (ndarray):   Array of received data words.
-        check_words (ndarray):  Array of received error correction words.
+        data_words (list):      List of received data words.
+        check_words (list):     List of received error correction words.
         max_errors (int):       Maximum number of errors to correct.
         debug_level (int):      Optional debug level.
 
     Returns:
-        Array of corrected data words.
+        List of corrected data words.
 
     Raises:
         QRDecodeError: If error correction fails.
@@ -1059,7 +1059,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     n_data_words = len(data_words)
     n_check_words = len(check_words)
     n_received_words = n_data_words + n_check_words
-    received_words = np.concatenate((data_words, check_words))
+    received_words = data_words + check_words
 
     # Sanity check on the number of correctable errors.
     assert 2 * max_errors <= n_check_words
@@ -1085,13 +1085,13 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     # of GF(2**8).
     #
     received_poly = received_words[::-1]
-    syndrome = np.zeros(n_check_words, dtype=np.uint8)
+    syndrome = n_check_words * [0]
     for k in range(n_check_words):
         x = reed_solomon_gf_exp[k]
         syndrome[k] = rs_eval_poly(received_poly, x)
 
     # Quick check if all syndromes are zero.
-    if np.all(syndrome == 0):
+    if all([(x == 0) for x in syndrome]):
         # No errors, just return the data words.
         return data_words
 
@@ -1141,11 +1141,13 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     # Double check that the syndrome is all-zero after error correction.
     # TODO : Remove this when it becomes clear that this can not fail.
     received_poly = received_words[::-1]
-    syndrome = np.zeros(n_check_words, dtype=np.uint8)
+    syndrome = n_check_words * [0]
     for k in range(n_check_words):
         x = reed_solomon_gf_exp[k]
         syndrome[k] = rs_eval_poly(received_poly, x)
-    assert np.all(syndrome == 0)
+        if syndrome[k] != 0:
+            all_zero_syndrome = False
+    assert all([(x == 0) for x in syndrome])
 
     # Return the corrected data words.
     return received_words[:n_data_words]
@@ -1158,13 +1160,13 @@ def codeword_error_correction(codewords,
     """Perform error correction and return only the data codewords.
 
     Parameters:
-        codewords (ndarray):            Array of codewords in placement order.
+        codewords (list):               List of codewords in placement order.
         qr_version (int):               QR code version
         error_correction_level (str):   Error correction level (L, M, Q or H).
         debug_level (int):              Optional debug level.
 
     Returns:
-        Array of error-corrected data codewords.
+        List of error-corrected data codewords.
 
     Raises:
         QRDecodeError: If error correction fails.
@@ -1188,7 +1190,7 @@ def codeword_error_correction(codewords,
         data_words = codewords[i:k:n_blocks]
         if i >= n_blocks - n_long_blocks:
             extra_word = codewords[n_data_words-n_blocks+i]
-            data_words = np.append(data_words, (extra_word,))
+            data_words.append(extra_word)
 
         # Collect error correction words from codeword sequence.
         check_words = codewords[n_data_words+i::n_blocks]
@@ -1198,16 +1200,16 @@ def codeword_error_correction(codewords,
                                       check_words,
                                       max_errors,
                                       debug_level)
-        corrected_data.append(message)
+        corrected_data += message
 
-    return np.concatenate(corrected_data)
+    return corrected_data
 
 
 def get_bits_from_stream(bitstream, position, num_bits):
     """Read bits from the bitstream.
 
     Parameters:
-        bitstream (ndarray):    Array of 8-bit data codewords.
+        bitstream (list):       List of 8-bit data codewords.
         position (int):         Index of first bit to read.
         num_bits (int):         Number of bits to read.
 
@@ -1226,13 +1228,13 @@ def get_bits_from_stream(bitstream, position, num_bits):
 
     k = min(num_bits, 8 - bit_pos)
     mask = (1 << k) - 1
-    value = (int(bitstream[word_pos]) >> (8 - bit_pos - k)) & mask
+    value = (bitstream[word_pos] >> (8 - bit_pos - k)) & mask
 
     bits_remaining = num_bits - k
 
     while bits_remaining >= 8:
         word_pos += 1
-        word = int(bitstream[word_pos])
+        word = bitstream[word_pos]
         value = (value << 8) | word
         bits_remaining -= 8
 
@@ -1240,7 +1242,7 @@ def get_bits_from_stream(bitstream, position, num_bits):
         word_pos += 1
         mask = (1 << bits_remaining) - 1
         lsb = 8 - bits_remaining
-        word = (int(bitstream[word_pos]) >> (8 - bits_remaining)) & mask
+        word = (bitstream[word_pos] >> (8 - bits_remaining)) & mask
         value = (value << bits_remaining) | word
 
     return value
@@ -1338,7 +1340,7 @@ def decode_bitstream(bitstream, qr_version):
     """Decode the specified QR bitstream.
 
     Parameters:
-        bitstream (ndarray):    Array of 8-bit data codewords.
+        bitstream (list):       Array of 8-bit data codewords.
         qr_version (int):       QR code version.
 
     Returns:
@@ -1508,7 +1510,7 @@ def decode_qrcode(image, debug_level=0):
             codewords = extract_codewords(matrix, mask_pattern)
 
             # Unpack codeword sequence and perform error correction.
-            bitstream = codeword_error_correction(codewords,
+            bitstream = codeword_error_correction(list(codewords),
                                                   qr_version,
                                                   error_correction_level,
                                                   debug_level)
