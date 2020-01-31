@@ -24,21 +24,21 @@ import PIL
 # The element "a" (represented as integer value 2) is a primitive element
 # of this field.
 #
-REED_SOLOMON_GF8_POLY = 0b100011101
+REED_SOLOMON_GF_POLY = 0b100011101
 
 
 # Construct lookup tables for exp/log:
-#   reed_solomon_gf8_exp[k] = a**k
-#   reed_solomon_gf8_log[a**k] = k
-reed_solomon_gf8_exp = 256 * [0]
-reed_solomon_gf8_log = 256 * [0]
+#   reed_solomon_gf_exp[k] = a**k
+#   reed_solomon_gf_log[a**k] = k
+reed_solomon_gf_exp = 256 * [0]
+reed_solomon_gf_log = 256 * [0]
 v = 1
 for k in range(1, 256):
-    v = (v << 1) ^ ((v >> 7) * REED_SOLOMON_GF8_POLY)
-    reed_solomon_gf8_exp[k] = v
-    reed_solomon_gf8_log[v] = k
-reed_solomon_gf8_exp[0] = 1
-reed_solomon_gf8_log[1] = 0
+    v = (v << 1) ^ ((v >> 7) * REED_SOLOMON_GF_POLY)
+    reed_solomon_gf_exp[k] = v
+    reed_solomon_gf_log[v] = k
+reed_solomon_gf_exp[0] = 1
+reed_solomon_gf_log[1] = 0
 del k, v
 
 
@@ -879,9 +879,9 @@ def rs_mul(a, b):
         return 0
 
     # a * b == exp(log(a) + log(b))
-    loga = reed_solomon_gf8_log[a]
-    logb = reed_solomon_gf8_log[b]
-    result = reed_solomon_gf8_exp[(loga + logb) % 255]
+    loga = reed_solomon_gf_log[a]
+    logb = reed_solomon_gf_log[b]
+    result = reed_solomon_gf_exp[(loga + logb) % 255]
 
     return result
 
@@ -903,9 +903,9 @@ def rs_div(a, b):
         return 0
 
     # a / b == exp(log(a) - log(b))
-    loga = reed_solomon_gf8_log[a]
-    logb = reed_solomon_gf8_log[b]
-    result = reed_solomon_gf8_exp[(255 + loga - logb) % 255]
+    loga = reed_solomon_gf_log[a]
+    logb = reed_solomon_gf_log[b]
+    result = reed_solomon_gf_exp[(255 + loga - logb) % 255]
 
     return result
 
@@ -1017,8 +1017,8 @@ def rs_forney(syndrome, error_locator, error_locations):
     #
     error_values = np.zeros(n_error, dtype=np.uint8)
     for k in range(n_error):
-        x = reed_solomon_gf8_exp[error_locations[k]]
-        xinv = reed_solomon_gf8_exp[255-error_locations[k]]
+        x = reed_solomon_gf_exp[error_locations[k]]
+        xinv = reed_solomon_gf_exp[255-error_locations[k]]
         v_err_eval = rs_eval_poly(err_eval, xinv)
         v_errloc_deriv = rs_eval_poly(errloc_deriv, xinv)
         error_values[k] = rs_div(rs_mul(x, v_err_eval), v_errloc_deriv)
@@ -1045,7 +1045,7 @@ def rs_gauss(syndrome, error_locations):
     matrix = np.zeros((n_check, n_error + 1), dtype=np.uint8)
     for k in range(n_error):
         for i in range(n_check):
-            matrix[i, k] = reed_solomon_gf8_exp[(error_locations[k] * i) % 255]
+            matrix[i, k] = reed_solomon_gf_exp[(error_locations[k] * i) % 255]
     matrix[:, n_error] = syndrome
     for k in range(n_error):
         i = k
@@ -1117,7 +1117,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     received_poly = received_words[::-1]
     syndrome = np.zeros(n_check_words, dtype=np.uint8)
     for k in range(n_check_words):
-        x = reed_solomon_gf8_exp[k]
+        x = reed_solomon_gf_exp[k]
         syndrome[k] = rs_eval_poly(received_poly, x)
 
     # Quick check if all syndromes are zero.
@@ -1142,7 +1142,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     # These represent the error locations.
     error_locations = []
     for k in range(n_received_words):
-        x = reed_solomon_gf8_exp[255-k]
+        x = reed_solomon_gf_exp[255-k]
         v = rs_eval_poly(error_locator, x)
         if v == 0:
             error_locations.append(k)
@@ -1167,7 +1167,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     received_poly = received_words[::-1]
     syndrome = np.zeros(n_check_words, dtype=np.uint8)
     for k in range(n_check_words):
-        x = reed_solomon_gf8_exp[k]
+        x = reed_solomon_gf_exp[k]
         syndrome[k] = rs_eval_poly(received_poly, x)
     assert np.all(syndrome == 0)
 
