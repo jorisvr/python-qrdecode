@@ -3,6 +3,7 @@
 """Tests for QR decoder."""
 
 import os.path
+import random
 import unittest
 from PIL import Image
 import qrdecode
@@ -497,6 +498,173 @@ class TestWithGeneratedQrCodes(unittest.TestCase):
         img = img.resize((3 * width, 4 * height))
 
         self.check_qr_code(img, text)
+
+
+class TestErrorCorrection(unittest.TestCase):
+    """Test internal error correction routines."""
+
+    @staticmethod
+    def _make_data_words(rnd, n_words):
+        """Return pseudo-random data words."""
+        return [rnd.randint(0, 255) for i in range(n_words)]
+
+    @staticmethod
+    def _make_check_words(data_words, n_check_words):
+        """Return Reed-Solomon error correction words."""
+
+        # Construct generator polynomial.
+        poly = [1]
+        q = 1
+        for k in range(n_check_words):
+            poly.append(0)
+            for i in range(k + 1, 0, -1):
+                poly[i] = poly[i - 1] ^ qrdecode.rs_mul(poly[i], q)
+            poly[0] = qrdecode.rs_mul(poly[0], q)
+            q = qrdecode.rs_mul(q, 2)
+
+        # Process message words.
+        check_words = n_check_words * [0]
+        for d in data_words:
+            d ^= check_words[0]
+            check_words = check_words[1:] + [0]
+            for k in range(n_check_words):
+                check_words[k] ^= qrdecode.rs_mul(poly[n_check_words-k-1], d)
+
+        return check_words
+
+    def _make_test_data(self, seed, block_len, data_len, n_errors):
+        """Create test data with a specified number of errors."""
+        rnd = random.Random(seed)
+        gdata = self._make_data_words(rnd, data_len)
+        gcheck = self._make_check_words(gdata, block_len - data_len)
+        rdata = list(gdata)
+        rcheck = list(gcheck)
+        errloc = rnd.sample(range(block_len), n_errors)
+        for p in errloc:
+            v = rnd.randint(1, 255)
+            if p < data_len:
+                rdata[p] ^= v
+            else:
+                rcheck[p - data_len] ^= v
+        return (gdata, gcheck, rdata, rcheck)
+
+    def test_clean_25_9(self):
+        # Test (25, 9) code without errors.
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10001, block_len=25, data_len=9, n_errors=0)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_corr_25_9(self):
+        # Test (25, 9) code with 8 errors (correctable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10002, block_len=25, data_len=9, n_errors=8)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_uncorr_25_9(self):
+        # Test (25, 9) code with 9 errors (uncorrectable).
+        # Note that there is a small probability that the random-generated
+        # input turns out to be a correctable block for a different message.
+        # However this probability is extremely small.
+        # This applies to all tests in the category "test_uncorr_N_K".
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10003, block_len=25, data_len=9, n_errors=9)
+        with self.assertRaises(qrdecode.QRDecodeError):
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+
+    def test_corr_25_9_1err_allpos(self):
+        # Test (25, 9) code with 1 error (correctable).
+        # Do this for all possible error locations.
+        rnd = random.Random(10004)
+        gdata = self._make_data_words(rnd, 9)
+        gcheck = self._make_check_words(gdata, 25 - 9)
+        for p in range(25):
+            rdata = list(gdata)
+            rcheck = list(gcheck)
+            v = rnd.randint(1, 255)
+            if p < 9:
+                rdata[p] ^= v
+            else:
+                rcheck[p - 9] ^= v
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+            self.assertEqual(list(decoded), gdata)
+
+    def test_corr_25_9_1err_allval(self):
+        # Test (25, 9) code with 1 error (correctable).
+        # Do this for all possible error values.
+        rnd = random.Random(10005)
+        gdata = self._make_data_words(rnd, 9)
+        gcheck = self._make_check_words(gdata, 25 - 9)
+        for v in range(1, 256):
+            rdata = list(gdata)
+            rcheck = list(gcheck)
+            rdata[0] ^= v
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+            self.assertEqual(list(decoded), gdata)
+
+    def test_clean_44_28(self):
+        # Test (44, 28) code without errors.
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10011, block_len=44, data_len=28, n_errors=0)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_corr_44_28(self):
+        # Test (44, 28) code with 8 errors (correctable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10012, block_len=44, data_len=28, n_errors=8)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_uncorr_44_28(self):
+        # Test (44, 28) code with 9 errors (uncorrectable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10013, block_len=44, data_len=28, n_errors=9)
+        with self.assertRaises(qrdecode.QRDecodeError):
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+
+    def test_clean_100_80(self):
+        # Test (100, 80) code without errors.
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10021, block_len=100, data_len=80, n_errors=0)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=10)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_corr_100_80(self):
+        # Test (100, 80) code with 10 errors (correctable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10022, block_len=100, data_len=80, n_errors=10)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=10)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_uncorr_100_80(self):
+        # Test (100, 80) code with 11 errors (uncorrectable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10023, block_len=100, data_len=80, n_errors=11)
+        with self.assertRaises(qrdecode.QRDecodeError):
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=10)
+
+    def test_clean_153_123(self):
+        # Test (153, 123) code without errors.
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10031, block_len=153, data_len=123, n_errors=0)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=15)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_corr_153_123(self):
+        # Test (153, 123) code with 15 errors (correctable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10032, block_len=153, data_len=123, n_errors=15)
+        decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=15)
+        self.assertEqual(list(decoded), gdata)
+
+    def test_uncorr_153_123(self):
+        # Test (153, 123) code with 16 errors (uncorrectable).
+        (gdata, gcheck, rdata, rcheck) = self._make_test_data(
+            seed=10033, block_len=153, data_len=123, n_errors=16)
+        with self.assertRaises(qrdecode.QRDecodeError):
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=15)
 
 
 def dump_generated_qr_codes():

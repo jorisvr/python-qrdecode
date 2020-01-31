@@ -1061,6 +1061,9 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     n_received_words = n_data_words + n_check_words
     received_words = np.concatenate((data_words, check_words))
 
+    # Sanity check on the number of correctable errors.
+    assert 2 * max_errors <= n_check_words
+
     if debug_level >= 2:
         debug_msg("REED-SOLOMON: ({}, {}, r={})"
                   .format(n_received_words, n_data_words, max_errors))
