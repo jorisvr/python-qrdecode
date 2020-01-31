@@ -603,6 +603,30 @@ class TestErrorCorrection(unittest.TestCase):
             decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
             self.assertEqual(decoded, gdata)
 
+    def test_corr_25_9_2err_allpos(self):
+        # Test (25, 9) code with 2 errors (correctable).
+        # Do this for all possible error locations.
+        rnd = random.Random(10006)
+        gdata = self._make_data_words(rnd, 9)
+        gcheck = self._make_check_words(gdata, 25 - 9)
+        for (p1, p2) in [(p1, p2)
+                         for p1 in range(25)
+                         for p2 in range(p1+1, 25)]:
+            rdata = list(gdata)
+            rcheck = list(gcheck)
+            v1 = rnd.randint(1, 255)
+            v2 = rnd.randint(1, 255)
+            if p1 < 9:
+                rdata[p1] ^= v1
+            else:
+                rcheck[p1 - 9] ^= v1
+            if p2 < 9:
+                rdata[p2] ^= v2
+            else:
+                rcheck[p2 - 9] ^= v2
+            decoded = qrdecode.rs_error_correction(rdata, rcheck, max_errors=8)
+            self.assertEqual(decoded, gdata)
+
     def test_clean_44_28(self):
         # Test (44, 28) code without errors.
         (gdata, gcheck, rdata, rcheck) = self._make_test_data(
