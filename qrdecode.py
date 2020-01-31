@@ -932,6 +932,20 @@ def rs_berlekamp_massey(syndrome):
     """Use the Berlekamp-Massey algorithm to calculate
     the error locator polynomial for the specified set of syndromes.
 
+    The error locator polynomial is a polynomial
+      C[L] * x**n + C[L-1] * x**(L-1) + ... + C[1] * x + C[0]
+
+    with the following properties:
+     - C[0] = 1;
+     - the degree "n" is as low as possible;
+     - the convolution of C(x) with the syndrome polynomial S(x) equals zero.
+
+    If we view the syndrome as an array S[0], S[1], ... S[N-1],
+    the last property of the error locator polynomial can be written
+    as follows:
+      C[0] * S[k] + C[1] * S[k-1] + ... + C[L] * S[k-L] = 0
+      (for all k where L <= k < N).
+
     All calculations are in the GF(2**8) field of the Reed Solomon code.
 
     Parameters:
@@ -1026,53 +1040,6 @@ def rs_forney(syndrome, error_locator, error_locations):
     return error_values
 
 
-# TODO : Remove this function when it becomes clear that
-#        rs_forney is working correctly.
-def rs_gauss(syndrome, error_locations):
-    """Use Gauss elimination to calculate the error values.
-
-    Parameters:
-        syndrome (ndarray): Array of syndromes.
-        error_locations (list): Error locations.
-
-    Returns:
-        Array with error value for each listed error location.
-    """
-
-    n_error = len(error_locations)
-    n_check = len(syndrome)
-
-    matrix = np.zeros((n_check, n_error + 1), dtype=np.uint8)
-    for k in range(n_error):
-        for i in range(n_check):
-            matrix[i, k] = reed_solomon_gf_exp[(error_locations[k] * i) % 255]
-    matrix[:, n_error] = syndrome
-    for k in range(n_error):
-        i = k
-        while i < n_check and matrix[i, k] == 0:
-            i += 1
-        assert i < n_check
-        q = np.copy(matrix[k])
-        matrix[k] = matrix[i]
-        matrix[i] = q
-        q = matrix[k, k]
-        assert q != 0
-        for col in range(k, n_error+1):
-            matrix[k, col] = rs_div(matrix[k, col], q)
-        for i in range(k+1, n_check):
-            q = matrix[i, k]
-            for col in range(k, n_error+1):
-                matrix[i, col] ^= rs_mul(matrix[k, col], q)
-    assert np.all(matrix[n_error:, n_error] == 0)
-    error_values = np.zeros(n_error, dtype=np.uint8)
-    for k in range(n_error-1, -1, -1):
-        w = matrix[k, n_error]
-        for i in range(k+1, n_error):
-            w ^= rs_mul(error_values[i], matrix[k, i])
-        error_values[k] = w
-    return error_values
-
-
 def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     """Perform Reed-Solomon error correction on a message block.
 
@@ -1083,7 +1050,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
         debug_level (int):      Optional debug level.
 
     Returns:
-        Array of corrected message words.
+        Array of corrected data words.
 
     Raises:
         QRDecodeError: If error correction fails.
@@ -1131,6 +1098,8 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     # Determine the error locator polynomial.
     error_locator = rs_berlekamp_massey(syndrome)
 
+    # Check that the degree of the error locator polynomial does not
+    # exceed the maximum number of correctable errors.
     n_error = len(error_locator) - 1
     if n_error > max_errors:
         raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
@@ -1139,7 +1108,9 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
         debug_msg("REED-SOLOMON: {} errors".format(n_error))
 
     # Find the roots of the error locator polynomial.
-    # These represent the error locations.
+    # If all roots are different AND each root equals "a**(-p[i])" where
+    # "p[i]" is a valid index into the received message, then
+    # the values "p[i]" represent the error locations.
     error_locations = []
     for k in range(n_received_words):
         x = reed_solomon_gf_exp[255-k]
@@ -1150,6 +1121,8 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
     if debug_level >= 3:
         debug_msg("  error_locations = " + str(error_locations))
 
+    # Check that all roots of the error locator polynomial are different
+    # and correspond to a valid position.
     if len(error_locations) != n_error:
         raise QRDecodeError("Uncorrectable errors in Reed-Solomon code")
 
@@ -1171,6 +1144,7 @@ def rs_error_correction(data_words, check_words, max_errors, debug_level=0):
         syndrome[k] = rs_eval_poly(received_poly, x)
     assert np.all(syndrome == 0)
 
+    # Return the corrected data words.
     return received_words[:n_data_words]
 
 
